@@ -28,7 +28,6 @@ public class ExampleOpenCoesione {
 
 	public static void main(String[] args) throws IOException {
 		
-		int i = System.in.read();
 		// Create the parser
 		CsvParser p = new CsvParser();
 		
