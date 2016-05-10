@@ -188,6 +188,7 @@ public class CsvParser {
 					e1.printStackTrace();
 				}
 		}
+		t.interrupt();
 		for(Processor e : elaboratori){
 			e.end();
 		}
