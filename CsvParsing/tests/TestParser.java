@@ -18,9 +18,9 @@ public class TestParser {
 		
 		CsvParser p = new CsvParser();
 		p.addProcessor(CsvParser.printer);
-		p.parse(new BufferedReader(sr));
-		System.out.println(CsvParser.printer);
-		
+		CsvParser.Stats s = p.parse(new BufferedReader(sr));
+		//System.out.println(CsvParser.printer);
+		assertEquals(3,s.rows);
 	}
 
 	@Test
@@ -31,9 +31,9 @@ public class TestParser {
 		
 		CsvParser p = new CsvParser();
 		p.addProcessor(CsvParser.printer);
-		p.parse(new BufferedReader(sr));
-		System.out.println(CsvParser.printer);
-		
+		CsvParser.Stats s = p.parse(new BufferedReader(sr));
+		//System.out.println(CsvParser.printer);
+		assertEquals(3,s.rows);
 	}
 
 
@@ -45,8 +45,51 @@ public class TestParser {
 		
 		CsvParser p = new CsvParser();
 		p.addProcessor(CsvParser.printer);
-		p.parse(new BufferedReader(sr));
-		System.out.println(CsvParser.printer);
-		
+		CsvParser.Stats s = p.parse(new BufferedReader(sr));
+		//System.out.println(CsvParser.printer);
+		assertEquals(3,s.rows);
+		System.out.println(s);
+
 	}
+
+	@Test
+	public void testExtraCRLF() throws IOException {
+		String csv = "A,B\r\n1,\"2\"\r\n\"3\",4\r\n";
+		
+		StringReader sr = new StringReader(csv);
+		
+		CsvParser p = new CsvParser();
+		p.addProcessor(CsvParser.printer);
+		CsvParser.Stats s = p.parse(new BufferedReader(sr));
+		//System.out.println(CsvParser.printer);
+		assertEquals(3,s.rows);
+		System.out.println(s);
+
+	}
+
+	@Test
+	public void testDQ() throws IOException {
+		String csv = "A,B\r\n1,\"2 is \"\"two\"\" \"\r\n\"3  is \"\"three\"\"\",4\r\n";
+		
+		StringReader sr = new StringReader(csv);
+		
+		CsvParser p = new CsvParser();
+		p.addProcessor(CsvParser.printer);
+		CsvParser.Stats s = p.parse(new BufferedReader(sr));
+		System.out.println(CsvParser.printer);
+		assertEquals(3,s.rows);
+		System.out.println(s);
+	}
+
+	@Test
+	public void testScuole() throws IOException {
+		
+		CsvParser p = new CsvParser();
+		p.addProcessor(CsvParser.printer);
+		CsvParser.Stats s = p.parse("scuole.csv");
+		//System.out.println(CsvParser.printer);
+		assertEquals(4378,s.rows);
+		System.out.println(s);
+	}
+
 }

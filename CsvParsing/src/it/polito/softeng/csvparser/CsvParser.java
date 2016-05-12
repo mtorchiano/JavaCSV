@@ -4,6 +4,10 @@ import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Reader;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -20,6 +24,8 @@ import java.util.regex.Pattern;
  * Si basa sul pattern Observer, dove il parser genera degli eventi
  * che vengono inviati ad uno o piu' oggetti Elaboratore che hanno
  * il compito di elaborare i dati contenuti nelle linee del file CSV.
+ * 
+ * Format is described in <a href="https://tools.ietf.org/html/rfc4180">IETF RFC 4180</a>
  * 
  * @author MTk (Marco Torchiano)
  *
@@ -50,8 +56,8 @@ public class CsvParser {
 	 * @param filename  nome del file.
 	 * @throws IOException
 	 */
-	public void parse(String filename) throws IOException{
-		parse(filename,"utf-8");
+	public Stats parse(String filename) throws IOException{
+		return parse(filename,"utf-8");
 	}
 	
 	/**
@@ -61,10 +67,10 @@ public class CsvParser {
 	 * @param encoding  specifica la codifica del file.
 	 * @throws IOException
 	 */
-	public void parse(String filename,String encoding) throws IOException{
+	public Stats parse(String filename,String encoding) throws IOException{
 		FileInputStream fr = new FileInputStream(filename);
-		BufferedReader in = new BufferedReader(new InputStreamReader(fr,encoding));
-		parse(in);
+		Reader in = new InputStreamReader(fr,encoding);
+		return parse(in);
 	}
 
 	/**
@@ -74,37 +80,392 @@ public class CsvParser {
 	 * @param encoding  specifica la codifica del file.
 	 * @throws IOException
 	 */
-	public void parse(BufferedReader in) throws IOException{
-		long count = 0;
-		String riga;
-		String prima = in.readLine();
+	
+	private char[] buffer = new char[4096];
+	private int begin;
+	private int current;
+	private int end;
+	private int limit;
+	private Reader in;
+	private long row;
+	private int col;
+	private String[] fields;
+	Map<String,Integer> titoliIndici;
+	private ArrayList<String> titoliList = new ArrayList<String>();
+	private long charCount=0;
+	
+	private void start(Reader in) throws IOException{
+		this.in = in;
+		limit = in.read(buffer);
+		begin = -1;
+		end = -1;
+		current = 0;
+		charCount+=limit;
 		
-		String[] titoli = split(prima);
-		Map<String,Integer> titoliIndici = new HashMap<String,Integer>();
-		for(int i=0; i<titoli.length; ++i){
-			titoliIndici.put(titoli[i], i);
+		String s = new String(buffer);
+		String scomma = s.replace(",", "");
+		String ssemi = s.replace(";", "");
+		int ncomma = s.length()-scomma.length();
+		int nsemi = s.length()-ssemi.length();
+		if(ncomma>nsemi){
+			CSV_SEPARATOR=',';
+		}else{
+			CSV_SEPARATOR=';';
 		}
-		for(Processor e : elaboratori){
-			e.headers(titoli);
-		}
-		String[] dati = new String[titoli.length];
-		while( (riga=in.readLine()) != null){
-			count++;
-			dati=split(riga.toCharArray(),dati);
-//			dati=split(riga,dati);
-			
-			Row r = new Row(titoliIndici,dati,count);
-			for(Processor e : elaboratori){
-				e.newLine(r);
-			}
-		}
-		for(Processor e : elaboratori){
-			e.end();
-		}
-		in.close();
+		row=0;
 	}
 	
+	private int resizeCount = 0;
+	private int next() throws IOException{
+		if(current==limit){
+			if(begin>0){
+				System.arraycopy(buffer, begin, buffer, 0, limit-begin);
+				int ns=begin;
+				begin=0;
+				end-=ns;
+				int nl = in.read(buffer, limit-ns, ns);
+				if(nl==-1){
+					return -1;
+				}
+				charCount+=nl;
+				current=limit-ns;
+				limit-=ns-nl;
+			}else{
+				resizeCount++;
+				char[] newBuffer = new char[buffer.length*2];
+				System.arraycopy(buffer,0, newBuffer, 0, buffer.length);
+				int nl = in.read(newBuffer, limit, buffer.length);
+				if(nl==-1) return -1;
+				charCount+=nl;
+				limit+=nl;
+				buffer=newBuffer;
+			}
+		}
+		return buffer[current++];
+	}
 	
+	private void beginfield(){
+		begin=current-1;
+		end=begin;
+	}
+	
+	private void closefield(){
+		String f = new String(buffer,begin,end-begin);
+		if(fields!=null){
+			fields[col] = f;
+		}else{
+			titoliList.add(f);
+		}
+		col++;
+		//System.out.print("'" + f +  "'  ");
+	}
+	
+	private void endrow(){
+		if(row==0){
+			Map<String,Integer> titoliIndici = new HashMap<String,Integer>();
+			for(int i=0; i<titoliList.size(); ++i){
+				titoliIndici.put(titoliList.get(i), i);
+			}
+			fields=titoliList.toArray(new String[titoliList.size()]);
+			for(Processor e : elaboratori){
+				e.headers(fields);
+			}
+		}else{
+			Row r = new Row(titoliIndici,fields,row);
+			for(Processor e : elaboratori){
+				e.newLine(r);
+			}			
+		}
+		col=0;
+		row++;
+		begin=end;
+		//System.out.print("\n");
+	}
+	
+	private void addtofield(){
+		if(end==current-1){
+			end++;
+		}else{
+			buffer[end++] = buffer[current-1];
+		}
+	}
+	
+	private static final int START=0;
+	private static final int UNQUOTED=1;
+	private static final int ENDROW=2;
+	private static final int QUOTED=3;
+	private static final int QUOTEBEGIN=6;
+	private static final int DQUOTE=4;
+	private static final int CR=5;
+	
+	private static final int END=-1;
+	private static final int EOF = -1;
+	
+	public class Stats {
+		public final Duration elapsed;
+		public final long rows;
+		public final long chars;
+		Stats(Duration e, long r, long c){
+			elapsed = e;
+			rows = r;
+			chars = c;
+		}
+		public String toString(){
+			return "Processed " + chars + " chars, " + row + " rows, in " + elapsed;
+		}
+	}
+	
+	public Stats parse(Reader in) throws IOException{
+/*
+// states:
+		
+	0: START
+			'"' 
+				-> QUOTED			
+			else
+				beginfield()
+				-> UNQUOTED
+	1: UNQUOTED
+			',' 
+				closefield()
+				-> START
+			'\n'
+				closefield()
+				endrow()
+				-> ENDROW
+			else
+				addtofield()
+	2: ENDROW
+			'\r'
+				-> START
+			'"'
+				-> QUOTED
+			else
+				beginfield()
+				-> UNQUOTED
+	3: QUOTED
+			'"'
+				-> DQUOTE
+			'\n'
+				addtofield()
+				-> CR
+			else
+				addtofield()
+	4: DQUOTE
+			'"'
+				addtofield()
+				-> QUOTED
+			','
+				closefield()
+				-> START
+			'\n'
+				closefield()
+				endrow()
+				-> ENDROW
+*/
+		Instant beginTime = Instant.now();
+		start(in);
+		int state = START;
+		while(true){
+			int ch = next();
+			if(ch==EOF){
+				if(col>0 || end>begin){
+					closefield();
+	  		  		endrow();
+				}
+	  			for(Processor e : elaboratori){
+	  				e.end();
+	  			}
+	  			Instant endTime = Instant.now();
+	  			return new Stats(Duration.between(beginTime, endTime),row,charCount);
+			}
+			switch(state){
+			case START:
+				switch(ch){
+				case '"': state = QUOTEBEGIN;
+						  break;
+				default: beginfield();
+						 addtofield();
+						 state = UNQUOTED;
+						 break;
+				case ',': if(CSV_SEPARATOR==','){
+								beginfield();
+								closefield();
+							    state = START;
+						  }else{
+							  beginfield();
+							  addtofield();
+						  }
+						  break;
+				case ';': if(CSV_SEPARATOR==';'){ 
+								beginfield();
+								closefield();
+							    state = START;
+						  }else{
+							  beginfield();
+							  addtofield();
+						  }
+						  break;
+				}
+				break;
+			case UNQUOTED :
+				switch(ch){
+				case ',': if(CSV_SEPARATOR==','){ 
+								closefield();
+							    state = START;
+						  }else{
+							  addtofield();
+						  }
+						  break;
+				case ';': if(CSV_SEPARATOR==';'){ 
+								closefield();
+							    state = START;
+						  }else{
+							  addtofield();
+						  }
+						  break;
+				case '\r':closefield();
+				  		  endrow();
+				  		  state = ENDROW;
+				  		  break;
+				case '\n':closefield();
+						  endrow();
+				  		  state = ENDROW;
+				  		  break;
+				default:  addtofield();
+				}
+				break;
+			case ENDROW :
+				switch(ch){
+				case '\n'://state = START;
+						  break;
+				case '\r'://state = START;
+						  break;
+				case '"': state = QUOTEBEGIN;
+						  break;
+				case ',': if(CSV_SEPARATOR==','){
+								beginfield();
+								closefield();
+							    state = START;
+						  }else{
+							  beginfield();
+							  addtofield();
+						  }
+						  break;
+				case ';': if(CSV_SEPARATOR==';'){ 
+								beginfield();
+								closefield();
+							    state = START;
+						  }else{
+							  beginfield();
+							  addtofield();
+						  }
+						  break;
+				default:  beginfield();
+						  addtofield();
+						  state = UNQUOTED;
+				}
+				break;
+			case QUOTEBEGIN :
+				switch(ch){
+				case '"': beginfield();
+						  state = DQUOTE;
+						  break;
+				case '\n':beginfield();
+						  addtofield();
+				  		  state = CR;
+				  		  break;
+				default: beginfield();
+						 addtofield();
+						 state=QUOTED;
+				}
+				break;
+			case QUOTED :
+				switch(ch){
+				case '"': state = DQUOTE;
+						  break;
+				case '\n':addtofield();
+				  		  state = CR;
+				  		  break;
+				default: addtofield();
+				}
+				break;
+			case DQUOTE :
+				switch(ch){
+				case '"': state = QUOTED;
+						  addtofield();
+						  break;
+				case ',': if(CSV_SEPARATOR==','){
+								closefield();
+							    state = START;
+						  }else{
+							  addtofield();
+						  }
+						  break;
+				case ';': if(CSV_SEPARATOR==';'){ 
+								closefield();
+							    state = START;
+						  }else{
+							  addtofield();
+						  }
+						  break;
+				case '\n':closefield();
+						  endrow();
+				  		  state = ENDROW;
+				  		  break;
+				case '\r':closefield();
+				  		  endrow();
+				  		  state = ENDROW;
+				  		  break;
+				default: /* unexpected char */
+						 addtofield();
+				}
+				break;
+			case CR :
+				switch(ch){
+				case '\r':state = QUOTED;
+						  break;
+				case '"':state = DQUOTE;
+						 break;
+				default: addtofield();
+						 state = QUOTED;
+				}
+				break;
+			}
+			
+		}
+		
+
+
+//		long count = 0;
+//		String riga;
+//		String prima = in.readLine();
+//		
+//		String[] titoli = split(prima);
+//		Map<String,Integer> titoliIndici = new HashMap<String,Integer>();
+//		for(int i=0; i<titoli.length; ++i){
+//			titoliIndici.put(titoli[i], i);
+//		}
+//		for(Processor e : elaboratori){
+//			e.headers(titoli);
+//		}
+//		String[] dati = new String[titoli.length];
+//		while( (riga=in.readLine()) != null){
+//			count++;
+//			dati=split(riga.toCharArray(),dati);
+////			dati=split(riga,dati);
+//			
+//			Row r = new Row(titoliIndici,dati,count);
+//			for(Processor e : elaboratori){
+//				e.newLine(r);
+//			}
+//		}
+//		for(Processor e : elaboratori){
+//			e.end();
+//		}
+//		in.close();
+	}
+
 	public void parsePar(String filename) throws IOException{
 		parsePar(filename,"utf-8");
 	}
@@ -302,8 +663,8 @@ public class CsvParser {
 	@Override
 	public void newLine(Row row) {
 		for(int i=0; i<row.getLength(); ++i){
+			if(i!=0) output.append(",");
 			output.append(row.get(i));
-			output.append(",");
 		}
 		output.append("\n");
 	}
