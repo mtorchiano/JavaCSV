@@ -48,6 +48,8 @@ public class TestParser {
 		CsvParser.Stats s = p.parse(new BufferedReader(sr));
 		//System.out.println(CsvParser.printer);
 		assertEquals(3,s.rows);
+		System.out.println(s);
+
 	}
 
 	@Test
@@ -61,6 +63,8 @@ public class TestParser {
 		CsvParser.Stats s = p.parse(new BufferedReader(sr));
 		//System.out.println(CsvParser.printer);
 		assertEquals(3,s.rows);
+		System.out.println(s);
+
 	}
 
 	@Test
@@ -74,6 +78,7 @@ public class TestParser {
 		CsvParser.Stats s = p.parse(new BufferedReader(sr));
 		System.out.println(CsvParser.printer);
 		assertEquals(3,s.rows);
+		System.out.println(s);
 	}
 
 	@Test
@@ -84,7 +89,7 @@ public class TestParser {
 		CsvParser.Stats s = p.parse("scuole.csv");
 		//System.out.println(CsvParser.printer);
 		assertEquals(4378,s.rows);
-		System.out.println("Elapsed: " + s.elapsed);
+		System.out.println(s);
 	}
 
 }

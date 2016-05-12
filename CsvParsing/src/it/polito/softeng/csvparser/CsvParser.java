@@ -87,11 +87,12 @@ public class CsvParser {
 	private int end;
 	private int limit;
 	private Reader in;
-	private int row;
+	private long row;
 	private int col;
 	private String[] fields;
 	Map<String,Integer> titoliIndici;
 	private ArrayList<String> titoliList = new ArrayList<String>();
+	private long charCount=0;
 	
 	private void start(Reader in) throws IOException{
 		this.in = in;
@@ -99,6 +100,7 @@ public class CsvParser {
 		begin = -1;
 		end = -1;
 		current = 0;
+		charCount+=limit;
 		
 		String s = new String(buffer);
 		String scomma = s.replace(",", "");
@@ -125,6 +127,7 @@ public class CsvParser {
 				if(nl==-1){
 					return -1;
 				}
+				charCount+=nl;
 				current=limit-ns;
 				limit-=ns-nl;
 			}else{
@@ -133,6 +136,7 @@ public class CsvParser {
 				System.arraycopy(buffer,0, newBuffer, 0, buffer.length);
 				int nl = in.read(newBuffer, limit, buffer.length);
 				if(nl==-1) return -1;
+				charCount+=nl;
 				limit+=nl;
 				buffer=newBuffer;
 			}
@@ -174,6 +178,7 @@ public class CsvParser {
 		}
 		col=0;
 		row++;
+		begin=end;
 		//System.out.print("\n");
 	}
 	
@@ -199,9 +204,14 @@ public class CsvParser {
 	public class Stats {
 		public final Duration elapsed;
 		public final long rows;
-		Stats(Duration e, long r){
+		public final long chars;
+		Stats(Duration e, long r, long c){
 			elapsed = e;
 			rows = r;
+			chars = c;
+		}
+		public String toString(){
+			return "Processed " + chars + " chars, " + row + " rows, in " + elapsed;
 		}
 	}
 	
@@ -259,13 +269,15 @@ public class CsvParser {
 		while(true){
 			int ch = next();
 			if(ch==EOF){
-				closefield();
-	  		  	endrow();
+				if(col>0 || end>begin){
+					closefield();
+	  		  		endrow();
+				}
 	  			for(Processor e : elaboratori){
 	  				e.end();
 	  			}
 	  			Instant endTime = Instant.now();
-	  			return new Stats(Duration.between(beginTime, endTime),row);
+	  			return new Stats(Duration.between(beginTime, endTime),row,charCount);
 			}
 			switch(state){
 			case START:
@@ -454,16 +466,6 @@ public class CsvParser {
 //		in.close();
 	}
 
-	private Stats endfile(Instant beginTime) {
-		for(Processor e : elaboratori){
-			e.end();
-		}
-		Instant endTime = Instant.now();
-		
-		return new Stats(Duration.between(beginTime, endTime),row);
-	}
-	
-	
 	public void parsePar(String filename) throws IOException{
 		parsePar(filename,"utf-8");
 	}
