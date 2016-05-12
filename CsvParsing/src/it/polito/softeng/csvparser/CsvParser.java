@@ -81,7 +81,7 @@ public class CsvParser {
 	 * @throws IOException
 	 */
 	
-	private char[] buffer = new char[65536];
+	private char[] buffer = new char[4096];
 	private int begin;
 	private int current;
 	private int end;
@@ -113,8 +113,8 @@ public class CsvParser {
 		row=0;
 	}
 	
+	private int resizeCount = 0;
 	private int next() throws IOException{
-		//TODO handle loading next buffer...
 		if(current==limit){
 			if(begin>0){
 				System.arraycopy(buffer, begin, buffer, 0, limit-begin);
@@ -128,6 +128,7 @@ public class CsvParser {
 				current=limit-ns;
 				limit-=ns-nl;
 			}else{
+				resizeCount++;
 				char[] newBuffer = new char[buffer.length*2];
 				System.arraycopy(buffer,0, newBuffer, 0, buffer.length);
 				int nl = in.read(newBuffer, limit, buffer.length);
@@ -255,8 +256,17 @@ public class CsvParser {
 		Instant beginTime = Instant.now();
 		start(in);
 		int state = START;
-		while(state!=END){
+		while(true){
 			int ch = next();
+			if(ch==EOF){
+				closefield();
+	  		  	endrow();
+	  			for(Processor e : elaboratori){
+	  				e.end();
+	  			}
+	  			Instant endTime = Instant.now();
+	  			return new Stats(Duration.between(beginTime, endTime),row);
+			}
 			switch(state){
 			case START:
 				switch(ch){
@@ -310,10 +320,6 @@ public class CsvParser {
 						  endrow();
 				  		  state = ENDROW;
 				  		  break;
-				case EOF: closefield();
-				  		  endrow();
-				  		  state = END;
-				  		  break;
 				default:  addtofield();
 				}
 				break;
@@ -323,8 +329,6 @@ public class CsvParser {
 						  break;
 				case '\r'://state = START;
 						  break;
-				case -1:  state = END;
-				  		  break;
 				case '"': state = QUOTEBEGIN;
 						  break;
 				case ',': if(CSV_SEPARATOR==','){
@@ -401,10 +405,6 @@ public class CsvParser {
 				  		  endrow();
 				  		  state = ENDROW;
 				  		  break;
-				case EOF: closefield();
-				  		  endrow();
-				  		  state = END;
-				  		  break;
 				default: /* unexpected char */
 						 addtofield();
 				}
@@ -423,13 +423,6 @@ public class CsvParser {
 			
 		}
 		
-		for(Processor e : elaboratori){
-			e.end();
-		}
-		in.close();
-		Instant endTime = Instant.now();
-		
-		return new Stats(Duration.between(beginTime, endTime),row);
 
 
 //		long count = 0;
@@ -459,6 +452,15 @@ public class CsvParser {
 //			e.end();
 //		}
 //		in.close();
+	}
+
+	private Stats endfile(Instant beginTime) {
+		for(Processor e : elaboratori){
+			e.end();
+		}
+		Instant endTime = Instant.now();
+		
+		return new Stats(Duration.between(beginTime, endTime),row);
 	}
 	
 	
