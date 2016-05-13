@@ -1,4 +1,4 @@
-package it.polito.softeng.csvparser.examples;
+package it.polito.softeng.csvparser.processor;
 
 import java.text.NumberFormat;
 import java.util.HashMap;

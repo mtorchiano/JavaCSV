@@ -14,6 +14,12 @@ public class Row {
 		this.riga = count;
 	}
 	
+	void init(String[] campi, long count) {
+		this.titoliIndici = titoliIndici;
+		this.campi = campi;
+		this.riga = count;
+	}
+	
 
 	public String get(int indice){
 		return campi[indice];

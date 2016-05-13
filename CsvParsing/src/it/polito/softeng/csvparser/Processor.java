@@ -1,5 +1,12 @@
 package it.polito.softeng.csvparser;
 
+/**
+ * This interface must be implemented by the processors
+ * used with the {@link CsvParser}.
+ * 
+ * @author mtk
+ *
+ */
 public interface Processor {
 	/**
 	 * Method called after reading the first row of CSV that
@@ -17,7 +24,7 @@ public interface Processor {
 	void newLine(Row row);
 	
 	/**
-	 * Method called at the end of the file, before terminating the parsing.
+	 * Method called at the end of the file, before terminating the parsing, at the end of the file
 	 */
 	void end();
 }

@@ -1,6 +1,7 @@
 package it.polito.softeng.csvparser.examples;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,13 +11,12 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import it.polito.softeng.csvparser.CsvParser;
+import it.polito.softeng.csvparser.CsvParser.Stats;
 import it.polito.softeng.csvparser.Processor;
+import it.polito.softeng.csvparser.processor.EmptyCells;
 
 /**
- * Main class per l'esempio sull'analisi dei dati di open-coesione.
- * 
- * Tutta l'elaborazione e' svolta nella classe 
- * {@link it.Processor.cvsparser.Elaboratore Elaboratore}
+ * Main class for checking open-coesione data.
  * 
  * I dati sono prelevati dal set di open-data di opencoesione.gov.it
  * relativi ai fondi strutturali Europei 2007/2013.
@@ -26,26 +26,24 @@ import it.polito.softeng.csvparser.Processor;
  */
 public class ExampleOpenCoesione {
 
+
 	public static void main(String[] args) throws IOException {
 		
 		// Create the parser
-		CsvParser p = new CsvParser();
 		
-		// Instantiate the processor
-		Processor e = new FinanzByTemaElab();
-		
-		// Register the processor with the parser
-		//p.addProcessor(e);
-		
-		e = new EmptyCells();
-		p.addProcessor(e);
 		
 		if(download("progetti_FS0713_20151231.csv")){
+			// create parser
+			CsvParser p = new CsvParser("progetti_FS0713_20151231.csv");
+			// empty cells processor
+			Processor proc = new EmptyCells();
+			p.addProcessor(proc);
 			// start parsing
-			p.parse("progetti_FS0713_20151231.csv");
+			Stats s = p.parse();
 		
-			// prints results (accumulated into the processor)
-			System.out.println(e.toString());
+			System.out.println(s);
+			
+			System.out.println(proc);
 		}
 	}
 
@@ -80,5 +78,6 @@ public class ExampleOpenCoesione {
 		}
 		return true;		
 	}
+
 
 }

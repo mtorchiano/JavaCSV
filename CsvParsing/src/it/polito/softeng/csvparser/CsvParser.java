@@ -1,121 +1,147 @@
 package it.polito.softeng.csvparser;
 
-import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-//import java.util.regex.Matcher;
-//import java.util.regex.Pattern;
-import java.util.regex.Pattern;
 
 /**
- * Classe per la lettura in modalita' streaming di un file CSV.
+ * This class implements a high-performance streaming parser for CSV files.
  * 
- * Si basa sul pattern Observer, dove il parser genera degli eventi
- * che vengono inviati ad uno o piu' oggetti Elaboratore che hanno
- * il compito di elaborare i dati contenuti nelle linee del file CSV.
+ * It is based on the Observer pattern, where the parser generates 
+ * events that are notified to one of more {@link Processor} objects
+ * with the purpose of processing the data contained in the elements 
+ * of the CSV.
  * 
- * Format is described in <a href="https://tools.ietf.org/html/rfc4180">IETF RFC 4180</a>
+ * The parser conforms with <a href="https://tools.ietf.org/html/rfc4180">IETF RFC 4180</a>.
  * 
  * @author MTk (Marco Torchiano)
  *
  */
 public class CsvParser {
 	
-	private static final char CSV_QUOTATOR = '"';
 	private static final char[] CSV_SEPARATORS = {',',';','\t'};
-	public static char CSV_SEPARATOR = ';';
-	private List<Processor> elaboratori = new LinkedList<Processor>();
+	private static char CSV_SEPARATOR = ';';
+	private List<Processor> processors = new LinkedList<Processor>();
+	private Reader in;
 
 	/**
-	 * Aggiunge un elaboratore di linee al parser.
+	 * Build a parser for the given file
 	 * 
-	 * E' possibile avere piu' elaboratori per lo stesso parser
-	 * che gestiscono indipendentemente le informazioni delle
-	 * righe contenute nel file CSV.
+	 * @param filename full path of the file to be opened
 	 * 
-	 * @param e  l'oggetto che implementa l'interfaccia Elaboratore
-	 */
-	public void addProcessor(Processor e){
-		elaboratori.add(e);
-	}
-	
-	/**
-	 * Avvia il "parsing" del file specificato.
-	 * 
-	 * @param filename  nome del file.
 	 * @throws IOException
 	 */
-	public Stats parse(String filename) throws IOException{
-		return parse(filename,"utf-8");
-	}
-	
-	/**
-	 * Avvia il "parsing" del file specificato.
-	 * 
-	 * @param filename  nome del file.
-	 * @param encoding  specifica la codifica del file.
-	 * @throws IOException
-	 */
-	public Stats parse(String filename,String encoding) throws IOException{
-		FileInputStream fr = new FileInputStream(filename);
-		Reader in = new InputStreamReader(fr,encoding);
-		return parse(in);
+	public CsvParser(String filename) throws IOException{
+		this(new FileInputStream(filename));
 	}
 
 	/**
-	 * Avvia il "parsing" del file specificato.
+	 * Build a parser for the given file
 	 * 
-	 * @param filename  nome del file.
-	 * @param encoding  specifica la codifica del file.
+	 * @param filename full path of the file to be opened
+	 * @param encoding the encoding to be used to open the file
+	 * 
 	 * @throws IOException
 	 */
+	public CsvParser(String filename,String encoding) throws IOException{
+		this(new FileInputStream(filename),encoding);
+	}
+
+	/**
+	 * Build a parser for the given file
+	 * 
+	 * @param ins input stream to read the CSV from
+	 * 
+	 * @throws IOException
+	 */
+	public CsvParser(InputStream ins) throws IOException{
+		in = new InputStreamReader(ins);
+	}
+
+	/**
+	 * Build a parser for the given file
+	 * 
+	 * @param ins input stream to read the CSV from
+	 * @param encoding the encoding to be used to open the file
+	 * 
+	 * @throws IOException
+	 */
+	public CsvParser(InputStream ins,String encoding) throws IOException{
+		in = new InputStreamReader(ins,encoding);
+	}
+
+
+	/**
+	 * Build a parser for the given file
+	 * 
+	 * @param ins input stream to read the CSV from
+	 * @param encoding the encoding to be used to open the file
+	 * 
+	 * @throws IOException
+	 */
+	public CsvParser(Reader in) throws IOException{
+		this.in = in;
+	}
+
+	/**
+	 * Adds a new processor for the parsed data.
+	 * 
+	 * It is possible to have several processors for the
+	 * same parser that manange the information independently
+	 * the data contained in the CSV.
+	 * 
+	 * @param proc  the processor object implmenting the {@link Processor} interface
+	 */
+	public void addProcessor(Processor proc){
+		processors.add(proc);
+	}
+	
+	
 	
 	private char[] buffer = new char[4096];
 	private int begin;
 	private int current;
 	private int end;
 	private int limit;
-	private Reader in;
 	private long row;
+	private long cells;
+	private long charCount=0;
 	private int col;
 	private String[] fields;
-	Map<String,Integer> titoliIndici;
+	private Map<String,Integer> titoliIndici;
 	private ArrayList<String> titoliList = new ArrayList<String>();
-	private long charCount=0;
 	
-	private void start(Reader in) throws IOException{
-		this.in = in;
+	private void start() throws IOException{
 		limit = in.read(buffer);
 		begin = -1;
 		end = -1;
 		current = 0;
 		charCount+=limit;
+		row=0;
+		
 		
 		String s = new String(buffer);
-		String scomma = s.replace(",", "");
-		String ssemi = s.replace(";", "");
-		int ncomma = s.length()-scomma.length();
-		int nsemi = s.length()-ssemi.length();
-		if(ncomma>nsemi){
-			CSV_SEPARATOR=',';
-		}else{
-			CSV_SEPARATOR=';';
+		long max = 0;
+		for(int i=0; i<CSV_SEPARATORS.length; ++i){
+			char sep =CSV_SEPARATORS[i];
+			long ns = s.chars().filter(ch -> ch == sep ).count();
+			if(ns>max){
+				max = ns;
+				CSV_SEPARATOR = sep;
+			}
 		}
-		row=0;
+
 	}
 	
-	private int resizeCount = 0;
 	private int next() throws IOException{
 		if(current==limit){
 			if(begin>0){
@@ -131,7 +157,6 @@ public class CsvParser {
 				current=limit-ns;
 				limit-=ns-nl;
 			}else{
-				resizeCount++;
 				char[] newBuffer = new char[buffer.length*2];
 				System.arraycopy(buffer,0, newBuffer, 0, buffer.length);
 				int nl = in.read(newBuffer, limit, buffer.length);
@@ -157,23 +182,27 @@ public class CsvParser {
 			titoliList.add(f);
 		}
 		col++;
+		cells++;
 		//System.out.print("'" + f +  "'  ");
 	}
 	
+	private Row currentRow;;
 	private void endrow(){
 		if(row==0){
-			Map<String,Integer> titoliIndici = new HashMap<String,Integer>();
+			titoliIndici = new HashMap<String,Integer>();
 			for(int i=0; i<titoliList.size(); ++i){
 				titoliIndici.put(titoliList.get(i), i);
 			}
 			fields=titoliList.toArray(new String[titoliList.size()]);
-			for(Processor e : elaboratori){
+			for(Processor e : processors){
 				e.headers(fields);
 			}
+			currentRow = new Row(titoliIndici,fields,0);
 		}else{
-			Row r = new Row(titoliIndici,fields,row);
-			for(Processor e : elaboratori){
-				e.newLine(r);
+			//Row r = new Row(titoliIndici,fields,row);
+			currentRow.init(fields, row);
+			for(Processor e : processors){
+				e.newLine(currentRow);
 			}			
 		}
 		col=0;
@@ -198,73 +227,34 @@ public class CsvParser {
 	private static final int DQUOTE=4;
 	private static final int CR=5;
 	
-	private static final int END=-1;
+//	private static final int END=-1;
 	private static final int EOF = -1;
 	
 	public class Stats {
 		public final Duration elapsed;
 		public final long rows;
 		public final long chars;
-		Stats(Duration e, long r, long c){
+		public final long cells;
+		Stats(Duration e, long r, long i, long c){
 			elapsed = e;
 			rows = r;
+			cells = i;
 			chars = c;
 		}
+		public double throughput(){
+			return chars/1000000.0 / (elapsed.getSeconds()+elapsed.getNano()/1000000000.0);
+		}
 		public String toString(){
-			return "Processed " + chars + " chars, " + row + " rows, in " + elapsed;
+			return "Processed " + chars + " chars, " + cells + " cells, "+ row + " rows, in " + elapsed+
+					" : throughput: " + String.format("%.3f",throughput()) +
+					"Mch/s";
 		}
 	}
 	
-	public Stats parse(Reader in) throws IOException{
-/*
-// states:
-		
-	0: START
-			'"' 
-				-> QUOTED			
-			else
-				beginfield()
-				-> UNQUOTED
-	1: UNQUOTED
-			',' 
-				closefield()
-				-> START
-			'\n'
-				closefield()
-				endrow()
-				-> ENDROW
-			else
-				addtofield()
-	2: ENDROW
-			'\r'
-				-> START
-			'"'
-				-> QUOTED
-			else
-				beginfield()
-				-> UNQUOTED
-	3: QUOTED
-			'"'
-				-> DQUOTE
-			'\n'
-				addtofield()
-				-> CR
-			else
-				addtofield()
-	4: DQUOTE
-			'"'
-				addtofield()
-				-> QUOTED
-			','
-				closefield()
-				-> START
-			'\n'
-				closefield()
-				endrow()
-				-> ENDROW
-*/
+	public Stats parse() throws IOException{
+
 		Instant beginTime = Instant.now();
-		start(in);
+		start();
 		int state = START;
 		while(true){
 			int ch = next();
@@ -273,21 +263,17 @@ public class CsvParser {
 					closefield();
 	  		  		endrow();
 				}
-	  			for(Processor e : elaboratori){
+	  			for(Processor e : processors){
 	  				e.end();
 	  			}
 	  			Instant endTime = Instant.now();
-	  			return new Stats(Duration.between(beginTime, endTime),row,charCount);
+	  			return new Stats(Duration.between(beginTime, endTime),row,cells,charCount);
 			}
 			switch(state){
 			case START:
 				switch(ch){
 				case '"': state = QUOTEBEGIN;
 						  break;
-				default: beginfield();
-						 addtofield();
-						 state = UNQUOTED;
-						 break;
 				case ',': if(CSV_SEPARATOR==','){
 								beginfield();
 								closefield();
@@ -306,6 +292,10 @@ public class CsvParser {
 							  addtofield();
 						  }
 						  break;
+				default: beginfield();
+						 addtofield();
+						 state = UNQUOTED;
+						 break;
 				}
 				break;
 			case UNQUOTED :
@@ -435,250 +425,6 @@ public class CsvParser {
 			
 		}
 		
-
-
-//		long count = 0;
-//		String riga;
-//		String prima = in.readLine();
-//		
-//		String[] titoli = split(prima);
-//		Map<String,Integer> titoliIndici = new HashMap<String,Integer>();
-//		for(int i=0; i<titoli.length; ++i){
-//			titoliIndici.put(titoli[i], i);
-//		}
-//		for(Processor e : elaboratori){
-//			e.headers(titoli);
-//		}
-//		String[] dati = new String[titoli.length];
-//		while( (riga=in.readLine()) != null){
-//			count++;
-//			dati=split(riga.toCharArray(),dati);
-////			dati=split(riga,dati);
-//			
-//			Row r = new Row(titoliIndici,dati,count);
-//			for(Processor e : elaboratori){
-//				e.newLine(r);
-//			}
-//		}
-//		for(Processor e : elaboratori){
-//			e.end();
-//		}
-//		in.close();
 	}
-
-	public void parsePar(String filename) throws IOException{
-		parsePar(filename,"utf-8");
-	}
-	
-	public void parsePar(String filename,String encoding) throws IOException{
-		FileInputStream fr = new FileInputStream(filename);
-		BufferedReader in = new BufferedReader(new InputStreamReader(fr,encoding));
-		parsePar(in);
-	}
-
-	public void parsePar(BufferedReader in) throws IOException {
-//		long count = 0;
-		String riga;
-		String prima = in.readLine();
-		
-		String[] titoli = split(prima);
-		Map<String,Integer> titoliIndici = new HashMap<String,Integer>();
-		for(int i=0; i<titoli.length; ++i){
-			titoliIndici.put(titoli[i], i);
-		}
-		for(Processor e : elaboratori){
-			e.headers(titoli);
-		}
-		
-		String[][] dati = {new String[titoli.length],
-							new String[titoli.length]};
-		boolean[] full = {false,false};
-		Thread t=new Thread(()->{
-			try {
-				long count=0;
-				int i=0;
-				while(true){
-					if(Thread.currentThread().isInterrupted()) return;
-					synchronized(full){
-						while(!full[i]) full.wait();
-						Row r = new Row(titoliIndici,dati[i],count);
-						for(Processor e : elaboratori){
-							e.newLine(r);
-						}
-						full[i] = false;
-						full.notifyAll();
-					}
-					i=1-i;
-					count++;
-				}
-			} catch (Exception e1) {
-				// TODO Auto-generated catch block
-				e1.printStackTrace();
-			}
-		});
-		t.start();
-		int i=0;
-		while( (riga=in.readLine()) != null){
-//			count++;
-			synchronized(full){
-				while(full[i])
-					try {
-						full.wait();
-					} catch (InterruptedException e1) {
-						// TODO Auto-generated catch block
-						e1.printStackTrace();
-					}
-				split(riga.toCharArray(),dati[i]);
-				full[i] = true;
-				full.notifyAll();
-			}
-			i=1-i;
-//			dati=split(riga,dati);
-			
-//			Row r = new Row(titoliIndici,dati,count);
-//			for(Processor e : elaboratori){
-//				e.newLine(r);
-//			}
-		}
-		synchronized(full){
-			while(full[0] || full[1])
-				try {
-					full.wait();
-				} catch (InterruptedException e1) {
-					// TODO Auto-generated catch block
-					e1.printStackTrace();
-				}
-		}
-		t.interrupt();
-		for(Processor e : elaboratori){
-			e.end();
-		}
-		in.close();
-	}
-
-
-	private static String[] split(String s){
-		char[] chars = s.toCharArray();
-		char sep = '\0';
-		int max = 0;
-		for(int si=0; si<CSV_SEPARATORS.length; ++si){
-			int count = 0; 
-			for(char ch : chars){
-				if(ch==CSV_SEPARATORS[si]) count++;
-			}		
-			if(count>max){
-				max=count;
-				sep=CSV_SEPARATORS[si];
-			}
-		}
-		CSV_SEPARATOR = sep;
-		
-//		rowPattern = Pattern.compile("((\"(([^\"]*|\"\")*)\")|([^\""+sep+"]*))("+sep+"|$)");
-
-		
-		String[] risultato = split(chars,new String[max+1]);
-//		String[] risultato = split(s,new String[max+1]);
-		for(int i=0; i<risultato.length; ++i){
-			if(risultato[i]==null){
-				return Arrays.copyOf(risultato,i);
-			}
-		}
-		return risultato;
-	}
-
-	private static String[] split(char[] chars,String[] risultato){
-		int p=0;
-
-		boolean inQuotes = false;
-		boolean postQuotes = false;
-		final int n = chars.length;
-		int begin=0;
-		int j=0;
-		for( int i =0 ; i<n; ++i,++j){
-			char ch = chars[i];
-			if(j<i) chars[j] = ch;
-			if(inQuotes){
-				if(ch==CSV_QUOTATOR){
-					if(i==n-1 || chars[i+1]!=CSV_QUOTATOR){
-						inQuotes=false;
-						postQuotes = true;
-						risultato[p++] = new String(chars,begin,j-begin);
-					}else{ // double " == quotation
-						i++;
-					}
-				}
-			}else{
-				if(ch==CSV_SEPARATOR){
-					if(postQuotes){
-						postQuotes = false;
-					}else{
-						risultato[p++] = new String(chars,begin,i-begin);
-					}
-					begin=i+1;
-					j=i;
-				}else{
-					if(ch==CSV_QUOTATOR){
-						begin=i+1;
-						inQuotes=true;
-					}
-				}
-			}
-			
-		}
-		if(!postQuotes)
-			risultato[p++]= new String(chars,begin,n-begin);
-		return risultato;
-	}
-	
-// More elegant but twice slower than the previous ad-hoc version :-/
-//
-//	private static Pattern rowPattern = Pattern.compile(
-//			"((\"(([^\"]*|\"\")*)\")|([^\";]+))(;|$)");
-//
-//	private static String[] split(String s,String [] risultato){
-//		Matcher m = rowPattern.matcher(s);
-//		int i=0;
-//		int n = risultato.length;
-//		while(i<n && m.find()){
-//			String r = m.group(3);
-//			if(r==null) r = m.group(5);
-//			risultato[i++] = r;
-//		}
-//		return risultato;
-//	}
-//	
-	private static class PrinterProcessor implements Processor {
-
-	private StringBuffer output; 
-	@Override
-	public void headers(String[] headers) {
-		output = new StringBuffer();
-		for(String h : headers){
-			output.append(h);
-			output.append(",");
-		}		
-		output.append("\n");
-	}
-
-	@Override
-	public void newLine(Row row) {
-		for(int i=0; i<row.getLength(); ++i){
-			if(i!=0) output.append(",");
-			output.append(row.get(i));
-		}
-		output.append("\n");
-	}
-
-	@Override
-	public void end() {
-		
-	}
-	
-	public String toString(){
-		return output.toString();
-	}
-	}
-	
-	public final static Processor printer = new PrinterProcessor();
 
 }
