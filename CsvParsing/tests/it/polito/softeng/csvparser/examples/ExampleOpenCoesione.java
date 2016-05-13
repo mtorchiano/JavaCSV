@@ -21,6 +21,15 @@ import it.polito.softeng.csvparser.processor.EmptyCells;
  * I dati sono prelevati dal set di open-data di opencoesione.gov.it
  * relativi ai fondi strutturali Europei 2007/2013.
  * 
+ * Currently the parser performance is fairly reasonable when compared to
+ * <code>wc</code> *n*x utility that performs no parsing at all
+ * 
+ * wc 		 : 238 MB/s
+ * CsvParser : 115 MB/s
+ * 
+ * Processing a 1.3GB file
+ * on a MacBook Pro (Retina, 15-inch, Late 2013) 2.3 GHz Intel Core i7 
+ * 
  * @author MTk
  * @see <a href="http://www.opencoesione.gov.it/opendata/">Open Coesione - Open Data</a>
  */
