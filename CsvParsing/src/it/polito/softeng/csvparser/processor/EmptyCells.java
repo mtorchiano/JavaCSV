@@ -8,7 +8,7 @@ import it.polito.softeng.csvparser.Processor;
 import it.polito.softeng.csvparser.Row;
 
 /**
- * Sample Process for the open-coesione data
+ * Data quality sample processor.
  * 
  * Computes empty cells, rows, columns
  * 

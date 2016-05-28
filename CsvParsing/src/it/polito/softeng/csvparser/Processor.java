@@ -4,7 +4,8 @@ package it.polito.softeng.csvparser;
  * This interface must be implemented by the processors
  * used with the {@link CsvParser}.
  * 
- * @author mtk
+ * @author MTk (Marco Torchiano)
+ * @version 0.6
  *
  */
 public interface Processor {

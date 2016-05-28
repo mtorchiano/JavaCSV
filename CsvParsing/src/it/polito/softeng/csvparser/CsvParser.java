@@ -15,15 +15,30 @@ import java.util.Map;
 
 /**
  * This class implements a high-performance streaming parser for CSV files.
- * 
+ * <p>
  * It is based on the Observer pattern, where the parser generates 
  * events that are notified to one of more {@link Processor} objects
  * with the purpose of processing the data contained in the elements 
  * of the CSV.
- * 
+ * <p>
  * The parser conforms with <a href="https://tools.ietf.org/html/rfc4180">IETF RFC 4180</a>.
+ * <p>
+ * The typical usage for a streaming parser: 
+ * 
+ * <pre>
+	CsvParser p = new CsvParser("file.csv");
+	
+	// empty cells processor
+	Processor proc = new EmptyCells();
+	p.addProcessor(proc);
+	
+	// start parsing
+	Stats s = p.parse();
+</pre>
+
  * 
  * @author MTk (Marco Torchiano)
+ * @version 0.6
  *
  */
 public class CsvParser {
@@ -38,7 +53,7 @@ public class CsvParser {
 	 * 
 	 * @param filename full path of the file to be opened
 	 * 
-	 * @throws IOException
+	 * @throws IOException if any IO problem is detected
 	 */
 	public CsvParser(String filename) throws IOException{
 		this(new FileInputStream(filename));
@@ -50,7 +65,7 @@ public class CsvParser {
 	 * @param filename full path of the file to be opened
 	 * @param encoding the encoding to be used to open the file
 	 * 
-	 * @throws IOException
+	 * @throws IOException if any IO problem is detected
 	 */
 	public CsvParser(String filename,String encoding) throws IOException{
 		this(new FileInputStream(filename),encoding);
@@ -61,7 +76,7 @@ public class CsvParser {
 	 * 
 	 * @param ins input stream to read the CSV from
 	 * 
-	 * @throws IOException
+	 * @throws IOException if any IO problem is detected
 	 */
 	public CsvParser(InputStream ins) throws IOException{
 		in = new InputStreamReader(ins);
@@ -73,7 +88,7 @@ public class CsvParser {
 	 * @param ins input stream to read the CSV from
 	 * @param encoding the encoding to be used to open the file
 	 * 
-	 * @throws IOException
+	 * @throws IOException if any IO problem is detected
 	 */
 	public CsvParser(InputStream ins,String encoding) throws IOException{
 		in = new InputStreamReader(ins,encoding);
@@ -83,10 +98,9 @@ public class CsvParser {
 	/**
 	 * Build a parser for the given file
 	 * 
-	 * @param ins input stream to read the CSV from
-	 * @param encoding the encoding to be used to open the file
+	 * @param in input reader to read the CSV from
 	 * 
-	 * @throws IOException
+	 * @throws IOException if any IO problem is detected
 	 */
 	public CsvParser(Reader in) throws IOException{
 		this.in = in;
@@ -230,20 +244,42 @@ public class CsvParser {
 //	private static final int END=-1;
 	private static final int EOF = -1;
 	
+	/**
+	 * Class that contains the parsing statistics.
+	 * 
+	 * @author mtk
+	 *
+	 */
+	
 	public class Stats {
+		/** Parsing elapsed time */
 		public final Duration elapsed;
+
+		/** Parsing number of rows */
 		public final long rows;
+
+		/** Parsing number of characters */
 		public final long chars;
+
+		/** Parsing number of cells */
 		public final long cells;
+		
 		Stats(Duration e, long r, long i, long c){
 			elapsed = e;
 			rows = r;
 			cells = i;
 			chars = c;
 		}
+
+		/**
+		 * Computes the throughput
+		 * 
+		 * @return Million lines per second
+		 */
 		public double throughput(){
 			return chars/1000000.0 / (elapsed.getSeconds()+elapsed.getNano()/1000000000.0);
 		}
+
 		public String toString(){
 			return "Processed " + chars + " chars, " + cells + " cells, "+ row + " rows, in " + elapsed+
 					" : throughput: " + String.format("%.3f",throughput()) +
@@ -251,6 +287,13 @@ public class CsvParser {
 		}
 	}
 	
+	/**
+	 * Start the parsing of the CSV content
+	 * 
+	 * @return the parsing statistics
+	 * 
+	 * @throws IOException in case of I/O error
+	 */
 	public Stats parse() throws IOException{
 
 		Instant beginTime = Instant.now();
@@ -422,9 +465,6 @@ public class CsvParser {
 				}
 				break;
 			}
-			
 		}
-		
 	}
-
 }
