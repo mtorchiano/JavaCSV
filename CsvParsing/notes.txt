@@ -1,0 +1,6 @@
+Command,Time
+"wc -l >/dev/null",1.962
+"wc",5.089
+"JavaCSV - only parsing",11.684
+"JavaCSV - empty cells",11.915
+"Apache CSV - only parsing",38.179
